@@ -1,7 +1,7 @@
 #Entrenamiento se realizara en el ipynb
 ####### GAN##########
 import numpy as np
-from data import load_cifar10_for_gan, generate_real_samples, generate_fake_samples, generate_latent_points
+from data import  generate_real_samples, generate_fake_samples, generate_latent_points
 from utils import save_plot
 import os
 
@@ -18,9 +18,9 @@ def summarize_performance(epoch, g_model, d_model, dataset, latent_dim,
     # plot (formato tutorial)
     save_plot(X_fake, epoch, n=7, save_dir=out_dir)
     # guardar generador (nombre igual al tutorial)
-    filename = os.path.join(out_dir, f'generator_model_{epoch+1:03d}.h5')
+    filename = os.path.join(out_dir, f'generator_model_{epoch+1:03d}.keras')
     g_model.save(filename)
-    print(f'✅ Saved {filename}')
+    print(f'Guardado {filename}')
 
 def train_gan(gan, dataset, n_epochs=200, n_batch=128, out_dir="results"):
     """
@@ -51,3 +51,42 @@ def train_gan(gan, dataset, n_epochs=200, n_batch=128, out_dir="results"):
         # cada 10 epochs: evaluar y guardar
         if (i + 1) % 10 == 0:
             summarize_performance(i, g_model, d_model, dataset, latent_dim, out_dir=out_dir)
+
+
+
+######################## lstm ############################################
+
+import tensorflow as tf
+import numpy as np
+from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
+
+def get_callbacks(monitor="val_loss", patience=0):
+    # Igual al notebook: EarlyStopping(patience=0)
+    return [tf.keras.callbacks.EarlyStopping(monitor=monitor, patience=patience, restore_best_weights=True)]
+
+def train(model, X_train, y_train, epochs=10, batch_size=200, validation_split=0.05,
+          callbacks=None, class_weight=None, verbose=1):
+    cbs = callbacks or get_callbacks("val_loss", patience=0)
+    history = model.fit(
+        X_train, y_train,
+        epochs=epochs,
+        batch_size=batch_size,
+        validation_split=validation_split,
+        verbose=verbose,
+        callbacks=cbs,
+        class_weight=class_weight
+    )
+    return history
+
+def evaluate_on_arrays(model, X, y, batch_size=200):
+    y_prob = model.predict(X, batch_size=batch_size, verbose=0).reshape(-1)
+    y_pred = (y_prob >= 0.5).astype("int32")
+    acc = accuracy_score(y, y_pred)
+    cm = confusion_matrix(y, y_pred).tolist()
+    report = classification_report(y, y_pred, output_dict=True)
+    return {"accuracy": float(acc), "confusion_matrix": cm, "report": report}
+
+def predict_classes(model, X, batch_size=200):
+    # Reemplazo de predict_classes() (deprecado)
+    y_prob = model.predict(X, batch_size=batch_size, verbose=0).reshape(-1)
+    return (y_prob >= 0.5).astype("int32")

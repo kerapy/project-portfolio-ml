@@ -97,7 +97,7 @@ class GAN:
         # upsample 32x32
         model.add(Conv2DTranspose(128, (4,4), strides=(2,2), padding='same'))
         model.add(LeakyReLU(alpha=0.2))
-        # output
+        # output con activacion tanh
         model.add(Conv2D(3, (3,3), activation='tanh', padding='same'))
         return model
 
@@ -114,3 +114,127 @@ class GAN:
     # helper opcional
     def generate_noise(self, n_samples: int):
         return np.random.randn(n_samples, self.latent_dim)
+    
+
+########## lstm modelo ########################################33
+import tensorflow as tf
+from tensorflow.keras import layers, models
+
+class LSTMSimpleClassifier:
+    """
+      LSTM(100, return_sequences=True) -> Dropout(0.2)
+      LSTM(50) -> Dropout(0.2)
+      Dense(1, sigmoid)
+    """
+    def __init__(self, timestamp: int, nb_features: int, lr=1e-3):
+        self.model = self._build(timestamp, nb_features, lr)
+
+    def _build(self, timestamp, nb_features, lr):
+        m = models.Sequential(name="LSTM_Classifier")
+        m.add(layers.Input(shape=(timestamp, nb_features)))
+        m.add(layers.LSTM(100, return_sequences=True))
+        m.add(layers.Dropout(0.2))
+        m.add(layers.LSTM(50, return_sequences=False))
+        m.add(layers.Dropout(0.2))
+        m.add(layers.Dense(1, activation="sigmoid"))
+        m.compile(
+            loss="binary_crossentropy",
+            optimizer=tf.keras.optimizers.Adam(lr),
+            metrics=["accuracy"]
+        )
+        return m
+
+    def summary(self):
+        return self.model.summary()
+
+
+##################### transformer modelo ##############################
+
+#### embedding ####
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras import layers
+from tensorflow.keras import ops
+
+class PositionalEmbedding(layers.Layer):
+    def __init__(self, sequence_length, input_dim, output_dim, **kwargs):
+        super().__init__(**kwargs)
+        self.token_embeddings = layers.Embedding(
+            input_dim=input_dim, output_dim=output_dim)
+        self.position_embeddings = layers.Embedding(
+            input_dim=sequence_length, output_dim=output_dim)
+        self.sequence_length = sequence_length
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+
+    def call(self, inputs):
+        length = ops.shape(inputs)[-1]
+        positions = ops.arange(0,length,1)
+        embedded_tokens = self.token_embeddings(inputs)
+        embedded_positions = self.position_embeddings(positions)
+        return embedded_tokens + embedded_positions
+
+    def compute_mask(self, inputs, mask=None):
+        return ops.not_equal(inputs, 0)
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "output_dim": self.output_dim,
+            "sequence_length": self.sequence_length,
+            "input_dim": self.input_dim,
+        })
+        return config
+    
+##### Encoder ######
+class TransformerEncoder(layers.Layer):
+    def __init__(self, embed_dim, dense_dim, num_heads, **kwargs):
+        super().__init__(**kwargs)
+        self.embed_dim = embed_dim
+        self.num_heads = num_heads
+        self.dense_dim = dense_dim
+        self.attention = layers.MultiHeadAttention(
+            num_heads=num_heads, key_dim=embed_dim)
+        self.dense_proj = keras.Sequential(
+            [layers.Dense(dense_dim, activation="relu"),
+             layers.Dense(embed_dim),]
+        )
+        self.layernorm_1 = layers.LayerNormalization()
+        self.layernorm_2 = layers.LayerNormalization()
+    def call(self, inputs, mask=None):
+        if mask is not None:
+            mask = mask[:, tf.newaxis, :]
+        attention_output = self.attention(
+            inputs, inputs, attention_mask=mask)
+        proj_input = self.layernorm_1(inputs + attention_output)
+        proj_output = self.dense_proj(proj_input)
+        return self.layernorm_2(proj_input + proj_output)
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "embed_dim": self.embed_dim,
+            "num_heads": self.num_heads,
+            "dense_dim": self.dense_dim,
+        })
+        return config
+
+#### armando el modelo
+
+def build_transformer_model(
+        vocab_size,
+        sequence_length,
+        embed_dim,
+        num_heads,
+        dense_dim):
+    inputs = keras.Input(shape=(None,), dtype="int64")
+    x = PositionalEmbedding(sequence_length,vocab_size, embed_dim)(inputs)
+    x = TransformerEncoder(embed_dim, dense_dim, num_heads)(x)
+    x = layers.GlobalMaxPooling1D()(x)
+    x = layers.Dropout(0.5)(x)
+    outputs = layers.Dense(1, activation="sigmoid")(x)
+    model = keras.Model(inputs, outputs)
+    model.compile(optimizer="adam", # Cambiar a optimizador Adam
+                loss="binary_crossentropy",
+                metrics=["accuracy"])
+    model.summary()
+    return model

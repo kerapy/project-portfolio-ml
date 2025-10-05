@@ -93,3 +93,27 @@ def create_plot(examples, n):
 		pyplot.imshow(examples[i, :, :])
 	pyplot.show()
  
+
+######################## utils para lstm series temporales ###########################
+import numpy as np
+import matplotlib.pyplot as plt
+from data import gen_sequence
+
+def plot_history(history):
+    plt.figure(figsize=(8,4))
+    for k in ("loss","val_loss","accuracy","val_accuracy"):
+        if k in history.history:
+            plt.plot(history.history[k], label=k)
+    plt.legend(); plt.xlabel("Epoch"); plt.title("Training curves")
+    plt.tight_layout(); plt.show()
+
+def prob_failure(model, df_test, machine_id, seq_length, feature_cols, id_col="id"):
+    """
+    Devuelve la probabilidad (%) de fallo de la ÚLTIMA ventana.
+    """
+    machine_df = df_test[df_test[id_col] == machine_id]
+    seqs = gen_sequence(machine_df, seq_length, feature_cols)
+    if seqs.size == 0:
+        raise ValueError("Esa máquina no tiene suficientes filas para la ventana indicada.")
+    preds = model.predict(seqs, verbose=0).reshape(-1)
+    return float(preds[-1] * 100.0)
