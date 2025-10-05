@@ -1,0 +1,1 @@
+#Entrenamiento se realizara en el ipynb

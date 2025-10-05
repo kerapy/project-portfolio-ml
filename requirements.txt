@@ -1,0 +1,8 @@
+numpy
+matplotlib
+tensorflow==2.19.0
+tensorflow-datasets
+scikit-learn
+pandas
+ipython
+seaborn
