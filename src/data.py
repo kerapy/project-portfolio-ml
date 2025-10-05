@@ -65,23 +65,20 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 
-# -----------------------------
-# Columnas (mismo orden Kaggle)
-# -----------------------------
+
+# Columnas
 COLS = ['id','cycle','setting1','setting2','setting3'] + [f's{i}' for i in range(1,22)]
 N_EXPECTED = len(COLS)  # 26
 
 def _read_pm_txt(path: str) -> pd.DataFrame:
-    # Algunos dumps traen columnas vacías; nos quedamos con las primeras 26
     df = pd.read_csv(path, sep=r"\s+", header=None)
     if df.shape[1] > N_EXPECTED:
         df = df.iloc[:, :N_EXPECTED]
     df.columns = COLS
     return df
 
-# --------------------------------------
+
 # Carga 3 archivos y construye RUL/label
-# --------------------------------------
 def load_pm_triplet_to_classification(
     train_path: str,
     test_path: str,
@@ -119,9 +116,8 @@ def load_pm_triplet_to_classification(
     features_col_name = ['setting1','setting2','setting3'] + [f's{i}' for i in range(1,22)]
     return df_train, df_test, features_col_name
 
-# --------------------------------------
+
 # Escalado MinMax
-# --------------------------------------
 def minmax_fit_transform(df_train: pd.DataFrame, df_test: pd.DataFrame, feature_cols):
     scaler = MinMaxScaler()
     df_train = df_train.copy()
@@ -130,9 +126,8 @@ def minmax_fit_transform(df_train: pd.DataFrame, df_test: pd.DataFrame, feature_
     df_test[feature_cols]  = scaler.transform(df_test[feature_cols])
     return df_train, df_test, scaler
 
-# --------------------------------------
+
 # Generadores con PADDING de ceros
-# --------------------------------------
 def gen_sequence(id_df: pd.DataFrame, seq_length: int, seq_cols):
     df_zeros = pd.DataFrame(np.zeros((seq_length - 1, id_df.shape[1])), columns=id_df.columns)
     id_df_pad = pd.concat([df_zeros, id_df], ignore_index=True)

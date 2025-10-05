@@ -47,7 +47,7 @@ def train_gan(gan, dataset, n_epochs=200, n_batch=128, out_dir="results"):
             g_loss = gan_model.train_on_batch(X_gan, y_gan)
             print(f'>{i+1}, {j+1}/{bat_per_epo}, d1={d_loss1:.3f}, d2={d_loss2:.3f} g={g_loss:.3f}', end='\r')
 
-        print()  # salto de línea al cerrar la época
+        print() 
         # cada 10 epochs: evaluar y guardar
         if (i + 1) % 10 == 0:
             summarize_performance(i, g_model, d_model, dataset, latent_dim, out_dir=out_dir)

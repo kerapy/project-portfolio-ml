@@ -75,7 +75,7 @@ class GAN:
         model.add(Flatten())
         model.add(Dropout(0.4))
         model.add(Dense(1, activation='sigmoid'))
-        # compile (igual que el tutorial)
+        # compile model
         opt = Adam(learning_rate=0.0002, beta_1=0.5)
         model.compile(loss='binary_crossentropy', optimizer=opt, metrics=['accuracy'])
         return model
@@ -111,7 +111,7 @@ class GAN:
         model.compile(loss='binary_crossentropy', optimizer=opt)
         return model
 
-    # helper opcional
+    # opcional
     def generate_noise(self, n_samples: int):
         return np.random.randn(n_samples, self.latent_dim)
     
