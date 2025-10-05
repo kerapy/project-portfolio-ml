@@ -1,6 +1,11 @@
 import tensorflow as tf
 from tensorflow.keras import layers, models
-
+from tensorflow.keras import Sequential
+from tensorflow.keras.layers import (Dense, Reshape, Flatten,
+                                     Conv2D, Conv2DTranspose,
+                                     LeakyReLU, Dropout)
+from tensorflow.keras.optimizers import Adam
+import numpy as np
 class CnnModel:
     def __init__(self, input_shape, num_classes):
         self.input_shape = input_shape
@@ -38,83 +43,198 @@ class CnnModel:
         print("------------------------------------------------------")
 
 # Creamos nuestro modelo GAN para cifar10
-class DCGAN:
-    def __init__(self, latent_dim=128, img_shape=(32, 32, 3), d_lr=2e-4, g_lr=2e-4, beta_1=0.5, beta_2=0.999):
+class GAN:
+    """
+    DCGAN para CIFAR-10 basado en el tutorial de Machine Learning Mastery.
+    Encapsula: generator, discriminator y el modelo combinado para entrenar G.
+    """
+    def __init__(self, latent_dim: int = 100, img_shape=(32, 32, 3)) -> None:
         self.latent_dim = latent_dim
         self.img_shape = img_shape
 
-        # Modelos
-        self.generator = self._build_generator()
         self.discriminator = self._build_discriminator()
+        self.generator = self._build_generator()
+        self.combined = self._build_gan(self.generator, self.discriminator)
 
-        # Compilar discriminador (se entrena solo al entrenar el D)
-        self.discriminator.compile(
-            optimizer=tf.keras.optimizers.Adam(learning_rate=d_lr, beta_1=beta_1, beta_2=beta_2),
-            loss='binary_crossentropy',
-            metrics=['accuracy']
-        )
-
-        # Modelo combinado (G engaña a D): congelamos D
-        self.discriminator.trainable = False
-        z = layers.Input(shape=(self.latent_dim,))
-        img = self.generator(z)
-        validity = self.discriminator(img)
-        self.combined = models.Model(z, validity, name="gan_combined")
-        self.combined.compile(
-            optimizer=tf.keras.optimizers.Adam(learning_rate=g_lr, beta_1=beta_1, beta_2=beta_2),
-            loss='binary_crossentropy'
-        )
-
-    def _build_generator(self):
-        """Generador DCGAN para 32x32x3."""
-        model = models.Sequential(name='generator')
-        n = 256  # canales base
-
-        model.add(layers.Input(shape=(self.latent_dim,)))
-        model.add(layers.Dense(4*4*n*2, use_bias=False))
-        model.add(layers.Reshape((4, 4, n*2)))  # (4,4,512)
-
-        # Bloques upsampling: 4->8->16->32
-        model.add(layers.BatchNormalization())
-        model.add(layers.ReLU())
-        model.add(layers.Conv2DTranspose(n, kernel_size=4, strides=2, padding='same', use_bias=False))  # 8x8
-
-        model.add(layers.BatchNormalization())
-        model.add(layers.ReLU())
-        model.add(layers.Conv2DTranspose(n//2, kernel_size=4, strides=2, padding='same', use_bias=False))  # 16x16
-
-        model.add(layers.BatchNormalization())
-        model.add(layers.ReLU())
-        model.add(layers.Conv2DTranspose(n//4, kernel_size=4, strides=2, padding='same', use_bias=False))  # 32x32
-
-        # Capa de salida a 3 canales con tanh
-        model.add(layers.Conv2D(self.img_shape[2], kernel_size=3, padding='same', activation='tanh'))
-
+    # --------- Discriminator  ---------
+    def _build_discriminator(self) -> Sequential:
+        model = Sequential(name="Discriminator")
+        # normal
+        model.add(Conv2D(64, (3,3), padding='same', input_shape=self.img_shape))
+        model.add(LeakyReLU(alpha=0.2))
+        # downsample
+        model.add(Conv2D(128, (3,3), strides=(2,2), padding='same'))
+        model.add(LeakyReLU(alpha=0.2))
+        # downsample
+        model.add(Conv2D(128, (3,3), strides=(2,2), padding='same'))
+        model.add(LeakyReLU(alpha=0.2))
+        # downsample
+        model.add(Conv2D(256, (3,3), strides=(2,2), padding='same'))
+        model.add(LeakyReLU(alpha=0.2))
+        # classifier
+        model.add(Flatten())
+        model.add(Dropout(0.4))
+        model.add(Dense(1, activation='sigmoid'))
+        # compile (igual que el tutorial)
+        opt = Adam(learning_rate=0.0002, beta_1=0.5)
+        model.compile(loss='binary_crossentropy', optimizer=opt, metrics=['accuracy'])
         return model
 
-    def _build_discriminator(self):
-        """Discriminador DCGAN para 32x32x3."""
-        model = models.Sequential(name='discriminator')
-        n = 64  # canales base
-
-        model.add(layers.Input(shape=self.img_shape))
-        # 32->16
-        model.add(layers.Conv2D(n, kernel_size=4, strides=2, padding='same'))
-        model.add(layers.LeakyReLU(alpha=0.2))
-        model.add(layers.Dropout(0.3))
-
-        # 16->8
-        model.add(layers.Conv2D(n*2, kernel_size=4, strides=2, padding='same'))
-        model.add(layers.LeakyReLU(alpha=0.2))
-        model.add(layers.Dropout(0.3))
-
-        # 8->4
-        model.add(layers.Conv2D(n*4, kernel_size=4, strides=2, padding='same'))
-        model.add(layers.LeakyReLU(alpha=0.2))
-        model.add(layers.Dropout(0.3))
-
-        model.add(layers.Flatten())
-        model.add(layers.Dense(1, activation='sigmoid'))  # prob. de "real"
-
+    # --------- Generator  ---------
+    def _build_generator(self) -> Sequential:
+        model = Sequential(name="Generator")
+        # foundation for 4x4 image
+        n_nodes = 256 * 4 * 4
+        model.add(Dense(n_nodes, input_dim=self.latent_dim))
+        model.add(LeakyReLU(alpha=0.2))
+        model.add(Reshape((4, 4, 256)))
+        # upsample 8x8
+        model.add(Conv2DTranspose(128, (4,4), strides=(2,2), padding='same'))
+        model.add(LeakyReLU(alpha=0.2))
+        # upsample 16x16
+        model.add(Conv2DTranspose(128, (4,4), strides=(2,2), padding='same'))
+        model.add(LeakyReLU(alpha=0.2))
+        # upsample 32x32
+        model.add(Conv2DTranspose(128, (4,4), strides=(2,2), padding='same'))
+        model.add(LeakyReLU(alpha=0.2))
+        # output con activacion tanh
+        model.add(Conv2D(3, (3,3), activation='tanh', padding='same'))
         return model
 
+    # --------- GAN combinado ---------
+    def _build_gan(self, g_model: Sequential, d_model: Sequential) -> Sequential:
+        d_model.trainable = False
+        model = Sequential(name="Combined_GAN")
+        model.add(g_model)
+        model.add(d_model)
+        opt = Adam(learning_rate=0.0002, beta_1=0.5)
+        model.compile(loss='binary_crossentropy', optimizer=opt)
+        return model
+
+    # helper opcional
+    def generate_noise(self, n_samples: int):
+        return np.random.randn(n_samples, self.latent_dim)
+    
+
+########## lstm modelo ########################################33
+import tensorflow as tf
+from tensorflow.keras import layers, models
+
+class LSTMSimpleClassifier:
+    """
+      LSTM(100, return_sequences=True) -> Dropout(0.2)
+      LSTM(50) -> Dropout(0.2)
+      Dense(1, sigmoid)
+    """
+    def __init__(self, timestamp: int, nb_features: int, lr=1e-3):
+        self.model = self._build(timestamp, nb_features, lr)
+
+    def _build(self, timestamp, nb_features, lr):
+        m = models.Sequential(name="LSTM_Classifier")
+        m.add(layers.Input(shape=(timestamp, nb_features)))
+        m.add(layers.LSTM(100, return_sequences=True))
+        m.add(layers.Dropout(0.2))
+        m.add(layers.LSTM(50, return_sequences=False))
+        m.add(layers.Dropout(0.2))
+        m.add(layers.Dense(1, activation="sigmoid"))
+        m.compile(
+            loss="binary_crossentropy",
+            optimizer=tf.keras.optimizers.Adam(lr),
+            metrics=["accuracy"]
+        )
+        return m
+
+    def summary(self):
+        return self.model.summary()
+
+
+##################### transformer modelo ##############################
+
+#### embedding ####
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras import layers
+from tensorflow.keras import ops
+
+class PositionalEmbedding(layers.Layer):
+    def __init__(self, sequence_length, input_dim, output_dim, **kwargs):
+        super().__init__(**kwargs)
+        self.token_embeddings = layers.Embedding(
+            input_dim=input_dim, output_dim=output_dim)
+        self.position_embeddings = layers.Embedding(
+            input_dim=sequence_length, output_dim=output_dim)
+        self.sequence_length = sequence_length
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+
+    def call(self, inputs):
+        length = ops.shape(inputs)[-1]
+        positions = ops.arange(0,length,1)
+        embedded_tokens = self.token_embeddings(inputs)
+        embedded_positions = self.position_embeddings(positions)
+        return embedded_tokens + embedded_positions
+
+    def compute_mask(self, inputs, mask=None):
+        return ops.not_equal(inputs, 0)
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "output_dim": self.output_dim,
+            "sequence_length": self.sequence_length,
+            "input_dim": self.input_dim,
+        })
+        return config
+    
+##### Encoder ######
+class TransformerEncoder(layers.Layer):
+    def __init__(self, embed_dim, dense_dim, num_heads, **kwargs):
+        super().__init__(**kwargs)
+        self.embed_dim = embed_dim
+        self.num_heads = num_heads
+        self.dense_dim = dense_dim
+        self.attention = layers.MultiHeadAttention(
+            num_heads=num_heads, key_dim=embed_dim)
+        self.dense_proj = keras.Sequential(
+            [layers.Dense(dense_dim, activation="relu"),
+             layers.Dense(embed_dim),]
+        )
+        self.layernorm_1 = layers.LayerNormalization()
+        self.layernorm_2 = layers.LayerNormalization()
+    def call(self, inputs, mask=None):
+        if mask is not None:
+            mask = mask[:, tf.newaxis, :]
+        attention_output = self.attention(
+            inputs, inputs, attention_mask=mask)
+        proj_input = self.layernorm_1(inputs + attention_output)
+        proj_output = self.dense_proj(proj_input)
+        return self.layernorm_2(proj_input + proj_output)
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "embed_dim": self.embed_dim,
+            "num_heads": self.num_heads,
+            "dense_dim": self.dense_dim,
+        })
+        return config
+
+#### armando el modelo
+
+def build_transformer_model(
+        vocab_size,
+        sequence_length,
+        embed_dim,
+        num_heads,
+        dense_dim):
+    inputs = keras.Input(shape=(None,), dtype="int64")
+    x = PositionalEmbedding(sequence_length,vocab_size, embed_dim)(inputs)
+    x = TransformerEncoder(embed_dim, dense_dim, num_heads)(x)
+    x = layers.GlobalMaxPooling1D()(x)
+    x = layers.Dropout(0.5)(x)
+    outputs = layers.Dense(1, activation="sigmoid")(x)
+    model = keras.Model(inputs, outputs)
+    model.compile(optimizer="adam", # Cambiar a optimizador Adam
+                loss="binary_crossentropy",
+                metrics=["accuracy"])
+    model.summary()
+    return model

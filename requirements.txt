@@ -6,3 +6,5 @@ scikit-learn
 pandas
 ipython
 seaborn
+graphviz
+pydot
