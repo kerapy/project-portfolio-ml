@@ -1,6 +1,11 @@
 import tensorflow as tf
 from tensorflow.keras import layers, models
-
+from tensorflow.keras import Sequential
+from tensorflow.keras.layers import (Dense, Reshape, Flatten,
+                                     Conv2D, Conv2DTranspose,
+                                     LeakyReLU, Dropout)
+from tensorflow.keras.optimizers import Adam
+import numpy as np
 class CnnModel:
     def __init__(self, input_shape, num_classes):
         self.input_shape = input_shape
@@ -38,83 +43,74 @@ class CnnModel:
         print("------------------------------------------------------")
 
 # Creamos nuestro modelo GAN para cifar10
-class DCGAN:
-    def __init__(self, latent_dim=128, img_shape=(32, 32, 3), d_lr=2e-4, g_lr=2e-4, beta_1=0.5, beta_2=0.999):
+class GAN:
+    """
+    DCGAN para CIFAR-10 basado en el tutorial de Machine Learning Mastery.
+    Encapsula: generator, discriminator y el modelo combinado para entrenar G.
+    """
+    def __init__(self, latent_dim: int = 100, img_shape=(32, 32, 3)) -> None:
         self.latent_dim = latent_dim
         self.img_shape = img_shape
 
-        # Modelos
-        self.generator = self._build_generator()
         self.discriminator = self._build_discriminator()
+        self.generator = self._build_generator()
+        self.combined = self._build_gan(self.generator, self.discriminator)
 
-        # Compilar discriminador (se entrena solo al entrenar el D)
-        self.discriminator.compile(
-            optimizer=tf.keras.optimizers.Adam(learning_rate=d_lr, beta_1=beta_1, beta_2=beta_2),
-            loss='binary_crossentropy',
-            metrics=['accuracy']
-        )
-
-        # Modelo combinado (G engaña a D): congelamos D
-        self.discriminator.trainable = False
-        z = layers.Input(shape=(self.latent_dim,))
-        img = self.generator(z)
-        validity = self.discriminator(img)
-        self.combined = models.Model(z, validity, name="gan_combined")
-        self.combined.compile(
-            optimizer=tf.keras.optimizers.Adam(learning_rate=g_lr, beta_1=beta_1, beta_2=beta_2),
-            loss='binary_crossentropy'
-        )
-
-    def _build_generator(self):
-        """Generador DCGAN para 32x32x3."""
-        model = models.Sequential(name='generator')
-        n = 256  # canales base
-
-        model.add(layers.Input(shape=(self.latent_dim,)))
-        model.add(layers.Dense(4*4*n*2, use_bias=False))
-        model.add(layers.Reshape((4, 4, n*2)))  # (4,4,512)
-
-        # Bloques upsampling: 4->8->16->32
-        model.add(layers.BatchNormalization())
-        model.add(layers.ReLU())
-        model.add(layers.Conv2DTranspose(n, kernel_size=4, strides=2, padding='same', use_bias=False))  # 8x8
-
-        model.add(layers.BatchNormalization())
-        model.add(layers.ReLU())
-        model.add(layers.Conv2DTranspose(n//2, kernel_size=4, strides=2, padding='same', use_bias=False))  # 16x16
-
-        model.add(layers.BatchNormalization())
-        model.add(layers.ReLU())
-        model.add(layers.Conv2DTranspose(n//4, kernel_size=4, strides=2, padding='same', use_bias=False))  # 32x32
-
-        # Capa de salida a 3 canales con tanh
-        model.add(layers.Conv2D(self.img_shape[2], kernel_size=3, padding='same', activation='tanh'))
-
+    # --------- Discriminator  ---------
+    def _build_discriminator(self) -> Sequential:
+        model = Sequential(name="Discriminator")
+        # normal
+        model.add(Conv2D(64, (3,3), padding='same', input_shape=self.img_shape))
+        model.add(LeakyReLU(alpha=0.2))
+        # downsample
+        model.add(Conv2D(128, (3,3), strides=(2,2), padding='same'))
+        model.add(LeakyReLU(alpha=0.2))
+        # downsample
+        model.add(Conv2D(128, (3,3), strides=(2,2), padding='same'))
+        model.add(LeakyReLU(alpha=0.2))
+        # downsample
+        model.add(Conv2D(256, (3,3), strides=(2,2), padding='same'))
+        model.add(LeakyReLU(alpha=0.2))
+        # classifier
+        model.add(Flatten())
+        model.add(Dropout(0.4))
+        model.add(Dense(1, activation='sigmoid'))
+        # compile (igual que el tutorial)
+        opt = Adam(learning_rate=0.0002, beta_1=0.5)
+        model.compile(loss='binary_crossentropy', optimizer=opt, metrics=['accuracy'])
         return model
 
-    def _build_discriminator(self):
-        """Discriminador DCGAN para 32x32x3."""
-        model = models.Sequential(name='discriminator')
-        n = 64  # canales base
-
-        model.add(layers.Input(shape=self.img_shape))
-        # 32->16
-        model.add(layers.Conv2D(n, kernel_size=4, strides=2, padding='same'))
-        model.add(layers.LeakyReLU(alpha=0.2))
-        model.add(layers.Dropout(0.3))
-
-        # 16->8
-        model.add(layers.Conv2D(n*2, kernel_size=4, strides=2, padding='same'))
-        model.add(layers.LeakyReLU(alpha=0.2))
-        model.add(layers.Dropout(0.3))
-
-        # 8->4
-        model.add(layers.Conv2D(n*4, kernel_size=4, strides=2, padding='same'))
-        model.add(layers.LeakyReLU(alpha=0.2))
-        model.add(layers.Dropout(0.3))
-
-        model.add(layers.Flatten())
-        model.add(layers.Dense(1, activation='sigmoid'))  # prob. de "real"
-
+    # --------- Generator  ---------
+    def _build_generator(self) -> Sequential:
+        model = Sequential(name="Generator")
+        # foundation for 4x4 image
+        n_nodes = 256 * 4 * 4
+        model.add(Dense(n_nodes, input_dim=self.latent_dim))
+        model.add(LeakyReLU(alpha=0.2))
+        model.add(Reshape((4, 4, 256)))
+        # upsample 8x8
+        model.add(Conv2DTranspose(128, (4,4), strides=(2,2), padding='same'))
+        model.add(LeakyReLU(alpha=0.2))
+        # upsample 16x16
+        model.add(Conv2DTranspose(128, (4,4), strides=(2,2), padding='same'))
+        model.add(LeakyReLU(alpha=0.2))
+        # upsample 32x32
+        model.add(Conv2DTranspose(128, (4,4), strides=(2,2), padding='same'))
+        model.add(LeakyReLU(alpha=0.2))
+        # output
+        model.add(Conv2D(3, (3,3), activation='tanh', padding='same'))
         return model
 
+    # --------- GAN combinado ---------
+    def _build_gan(self, g_model: Sequential, d_model: Sequential) -> Sequential:
+        d_model.trainable = False
+        model = Sequential(name="Combined_GAN")
+        model.add(g_model)
+        model.add(d_model)
+        opt = Adam(learning_rate=0.0002, beta_1=0.5)
+        model.compile(loss='binary_crossentropy', optimizer=opt)
+        return model
+
+    # helper opcional
+    def generate_noise(self, n_samples: int):
+        return np.random.randn(n_samples, self.latent_dim)

@@ -35,35 +35,26 @@ def data_augmentation(rotation_range=15, width_shift_range=0.1, height_shift_ran
 
 
 #---------------- GAN ----------------#
-def load_cifar10_for_gan():
-    """
-    Carga CIFAR-10 y preprocesa para DCGAN
-    """
-    (X_train, _), (_, _) = cifar10.load_data()
-    
-    # Normalizamos a [-1, 1] (importante para GANs con tanh)
-    X_train = X_train.astype('float32')
-    X_train = (X_train - 127.5) / 127.5
-    
-    print(f"CIFAR-10 cargado: {X_train.shape}")
-    print(f"Rango de valores: [{X_train.min():.2f}, {X_train.max():.2f}]")
-    
-    return X_train
+def load_real_samples():
+    (trainX, _), (_, _) = cifar10.load_data()
+    X = trainX.astype('float32')
+    X = (X - 127.5) / 127.5  # [-1,1]
+    print(X.shape)
+    return X
 
-def normalize_images(images):
-    """
-    Normaliza imágenes de [0, 255] a [-1, 1]
-    """
-    images = images.astype('float32')
-    images = (images - 127.5) / 127.5
-    return images
+def generate_real_samples(dataset, n_samples):
+    ix = np.random.randint(0, dataset.shape[0], n_samples)
+    X = dataset[ix]
+    y = np.ones((n_samples, 1))
+    return X, y
 
+def generate_latent_points(latent_dim, n_samples):
+    x_input = np.random.randn(latent_dim * n_samples)
+    x_input = x_input.reshape(n_samples, latent_dim)
+    return x_input
 
-def denormalize_images(images):
-    """
-    Desnormaliza imágenes de [-1, 1] a [0, 1]
-    (útil para visualización)
-    """
-    images = 0.5 * images + 0.5
-    images = np.clip(images, 0, 1)
-    return images
+def generate_fake_samples(g_model, latent_dim, n_samples):
+    x_input = generate_latent_points(latent_dim, n_samples)
+    X = g_model.predict(x_input, verbose=0)
+    y = np.zeros((n_samples, 1))
+    return X, y
