@@ -17,7 +17,7 @@ def summarize_performance(epoch, g_model, d_model, dataset, latent_dim,
     print('>Accuracy real: %.0f%%, fake: %.0f%%' % (acc_real*100, acc_fake*100))
     # plot (formato tutorial)
     save_plot(X_fake, epoch, n=7, save_dir=out_dir)
-    # guardar generador (nombre igual al tutorial)
+    # guardar generador 
     filename = os.path.join(out_dir, f'generator_model_{epoch+1:03d}.keras')
     g_model.save(filename)
     print(f'Guardado {filename}')
@@ -60,8 +60,8 @@ import tensorflow as tf
 import numpy as np
 from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
 
-def get_callbacks(monitor="val_loss", patience=0):
-    # Igual al notebook: EarlyStopping(patience=0)
+def get_callbacks(monitor="val_loss", patience=3):
+    #EarlyStopping(patience=3)
     return [tf.keras.callbacks.EarlyStopping(monitor=monitor, patience=patience, restore_best_weights=True)]
 
 def train(model, X_train, y_train, epochs=10, batch_size=200, validation_split=0.05,
@@ -87,6 +87,6 @@ def evaluate_on_arrays(model, X, y, batch_size=200):
     return {"accuracy": float(acc), "confusion_matrix": cm, "report": report}
 
 def predict_classes(model, X, batch_size=200):
-    # Reemplazo de predict_classes() (deprecado)
+    # Reemplazo de predict_classes()
     y_prob = model.predict(X, batch_size=batch_size, verbose=0).reshape(-1)
     return (y_prob >= 0.5).astype("int32")
