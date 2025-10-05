@@ -67,3 +67,29 @@ def save_model_plots(generator, discriminator, out_dir="results", dpi=110):
     plot_model(discriminator, to_file=disc_path, show_shapes=True, show_layer_names=True, dpi=dpi)
 
     return gen_path, disc_path
+
+################ para utilizar el modelo guardado ################
+from keras.models import load_model
+from numpy.random import randn
+from matplotlib import pyplot
+ 
+# generate points in latent space as input for the generator
+def generate_latent_points(latent_dim, n_samples):
+	# generate points in the latent space
+	x_input = randn(latent_dim * n_samples)
+	# reshape into a batch of inputs for the network
+	x_input = x_input.reshape(n_samples, latent_dim)
+	return x_input
+ 
+# plot the generated images
+def create_plot(examples, n):
+	# plot images
+	for i in range(n * n):
+		# define subplot
+		pyplot.subplot(n, n, 1 + i)
+		# turn off axis
+		pyplot.axis('off')
+		# plot raw pixel data
+		pyplot.imshow(examples[i, :, :])
+	pyplot.show()
+ 
