@@ -1,6 +1,8 @@
 # Portfolio ML 
 
-### Author : Pablo Gonzalez
+### Authors : 
+- Pablo Gonzalez
+- Araceli Sanchez
 ### Date : 04/10/2025
 
 ##### Steps for running the notebooks:
